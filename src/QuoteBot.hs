@@ -29,7 +29,7 @@ makeConfig db prefix admins = Config (C_S db) prefix (map (Regex.regex []) admin
 
 withConfig :: Config NotLoaded -> (Config Loaded -> IO a) -> IO a
 withConfig (Config (C_S cfg) prefix regex) cb = DB.withConnection cfg $ \db -> do
-    DB.execute_ db "CREATE TABLE IF NOT EXISTS quotes ( quote_id INTEGER PRIMARY KEY, added_on INT, added_by TEXT, quote TEXT );"
+    DB.execute_ db "CREATE TABLE IF NOT EXISTS quotes ( quote_id INTEGER PRIMARY KEY, channel TXT, added_on INT, added_by TEXT, quote TEXT );"
     cb (Config (C_D db) prefix regex)
 
 data K_Status = Loaded | NotLoaded
@@ -47,29 +47,36 @@ database :: Config Loaded -> DB.Connection
 database (Config (C_D x) _ _) = x
 
 addQuote :: Config Loaded -> Channel -> Nick -> Text -> IRC IO ()
-addQuote (database -> db) ch (Nick nick) quote = do
+addQuote (database -> db) ch@(Channel (T.toLower -> chT)) (Nick nick) quote = do
     liftIO (DB.executeNamed db
-                "INSERT INTO quotes (added_on, added_by, quote) VALUES ( strftime('%s', 'now'), :nick, :quote );"
-                [":nick"  := nick
-                ,":quote" := quote
+                "INSERT INTO quotes (channel, added_on, added_by, quote) VALUES ( :channel, strftime('%s', 'now'), :nick, :quote );"
+                [":channel" := chT
+                ,":nick"    := nick
+                ,":quote"   := quote
                 ])
     privmsg ch . Message $ "Quote added! (by " <> nick <> ")"
-    
+
 
 rmQuote :: Config Loaded -> Channel -> Nick -> Integer -> IRC IO ()
-rmQuote (database -> db) ch (Nick nick) quoteN = do
+rmQuote (database -> db) ch@(Channel (T.toLower -> chT)) (Nick nick) quoteN = do
     n <- liftIO $ do
-        DB.executeNamed db "DELETE FROM quotes WHERE quote_id=:qid" [":qid" := quoteN]
+        DB.executeNamed db "DELETE FROM quotes WHERE channel=:channel, quote_id=:qid"
+                            [":channel" := chT
+                            ,":qid"     := quoteN]
         DB.LowLevel.changes (DB.connectionHandle db)
     privmsg ch . Message $ case n of
                     0 -> "quote #" <> T.pack (show quoteN) <> " not found in database"
                     _ -> nick <> " removed the quote #" <> T.pack (show quoteN)
 
 randomQuote :: Config Loaded -> Channel -> IRC IO ()
-randomQuote (database -> db) ch = do
-    [DB.Only (cnt :: Integer)] <- liftIO (DB.query_ db "SELECT COUNT(*) AS cnt FROM quotes")
-    n <- liftIO $ Rand.randomRIO (0, cnt-1)
-    (xs :: [(Integer,Text)]) <- liftIO (DB.query db "SELECT quote_id, quote FROM quotes LIMIT ?, 1" (DB.Only n))
+randomQuote (database -> db) ch@(Channel (T.toLower -> chT)) = do
+    (xs :: [(Integer,Text)]) <- liftIO $ do
+        [DB.Only (cnt :: Integer)] <- DB.queryNamed db "SELECT COUNT(*) AS cnt FROM quotes WHERE channel=:channel"
+                                                [":channel" := chT]
+        n <- Rand.randomRIO (0, cnt-1)
+        DB.queryNamed db "SELECT quote_id, quote FROM quotes WHERE channel=:channel LIMIT :qid, 1"
+                                                [":qid"     := n
+                                                ,":channel" := chT]
     privmsg ch . Message $ case xs of
          []            -> "No quotes in database"
          [(q_id, txt)] -> "#" <> T.pack (show q_id) <> " " <> txt
@@ -85,6 +92,7 @@ quoteBot cfg = til loop where
     loop = irc_read >>= \case
             CHMSG (User nick _ host) channel (Message msg)
                 | Just xs <- _cmd "addquote" msg
+                , not (T.null xs)
                 -> Loop <$ addQuote cfg channel nick xs
                 | Just _  <- _cmd "quote" msg
                 -> Loop <$ randomQuote cfg channel
