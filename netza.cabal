@@ -88,7 +88,7 @@ executable netza
                       ,direct-sqlite >= 2.3.13 && < 2.4
                       ,sqlite-simple == 0.4.9.*
                       ,optparse-applicative == 0.11.*
-
+                      ,base64-bytestring == 1.0.0.*
   
   -- Directories containing source files.
   hs-source-dirs:      src
