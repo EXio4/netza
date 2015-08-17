@@ -15,6 +15,7 @@ import qualified Data.Text.Encoding as T.E
 import qualified Data.Text.ICU as Regex
 import qualified Database.SQLite.Simple as DB
 import           Database.SQLite.Simple (NamedParam((:=)))
+import qualified Database.SQLite3 as DB.LowLevel
 import qualified System.Random as Rand
 
 data Config (k :: K_Status) = Config {
@@ -57,8 +58,12 @@ addQuote (database -> db) ch (Nick nick) quote = do
 
 rmQuote :: Config Loaded -> Channel -> Nick -> Integer -> IRC IO ()
 rmQuote (database -> db) ch (Nick nick) quoteN = do
-    liftIO $ DB.executeNamed db "DELETE FROM quotes WHERE quote_id=:qid" [":qid" := quoteN]
-    privmsg ch . Message $ nick <> " removed the quote " <> T.pack (show quoteN)
+    n <- liftIO $ do
+        DB.executeNamed db "DELETE FROM quotes WHERE quote_id=:qid" [":qid" := quoteN]
+        DB.LowLevel.changes (DB.connectionHandle db)
+    privmsg ch . Message $ case n of
+                    0 -> "quote #" <> T.pack (show quoteN) <> " not found in database"
+                    _ -> nick <> " removed the quote #" <> T.pack (show quoteN)
 
 randomQuote :: Config Loaded -> Channel -> IRC IO ()
 randomQuote (database -> db) ch = do
@@ -87,6 +92,8 @@ quoteBot cfg = til loop where
                 , admin cfg host
                 , Right (xid,_) <- T.R.decimal xs
                 -> Loop <$ rmQuote cfg channel nick xid
+                | Just _ <- _cmd "ping" msg
+                -> Loop <$ privmsg channel "pong!"
                 | Just _  <- _cmd "quit" msg
                 , admin cfg host
                 -> Quit <$ cmd "QUIT" ["bai"]
