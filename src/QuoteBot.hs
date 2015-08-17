@@ -60,7 +60,7 @@ addQuote (database -> db) ch@(Channel (T.toLower -> chT)) (Nick nick) quote = do
 rmQuote :: Config Loaded -> Channel -> Nick -> Integer -> IRC IO ()
 rmQuote (database -> db) ch@(Channel (T.toLower -> chT)) (Nick nick) quoteN = do
     n <- liftIO $ do
-        DB.executeNamed db "DELETE FROM quotes WHERE channel=:channel, quote_id=:qid"
+        DB.executeNamed db "DELETE FROM quotes WHERE channel=:channel and quote_id=:qid"
                             [":channel" := chT
                             ,":qid"     := quoteN]
         DB.LowLevel.changes (DB.connectionHandle db)
@@ -106,6 +106,6 @@ quoteBot cfg = til loop where
                 , admin cfg host
                 -> Quit <$ cmd "QUIT" ["bai"]
             _ -> return Loop
-                
+
 
 
