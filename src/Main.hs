@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Main (main) where
 
 import           Data.Set (Set)
@@ -14,25 +15,59 @@ import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text as T
 import           Data.Text (Text)
+import           Data.Aeson
+import           Options.Applicative
+import qualified Data.Yaml as YAML
+import           Control.Exception
 import           QuoteBot
 
-cfg net p nick ch = IRCConfig net p (Nick (T.pack nick)) Nothing [ChannelCfg (Channel (T.pack ch)) Nothing]
+
+data CFG = CFG {
+         cfg_irc :: IRCConfig
+        ,cfg_bot :: Config NotLoaded
+}
+
+instance FromJSON (Config NotLoaded) where
+    parseJSON (Object v) = makeConfig <$> v .: "database" <*> v .: "prefix" <*> v .: "admins"
+    parseJSON _ = fail "bot_config"
+
+instance FromJSON CFG where
+    parseJSON (Object v) = CFG <$> v .: "irc" <*> v .: "bot"
+    parseJSON _ = fail "main_cfg"
             
-            
-config :: Config NotLoaded
-config = makeConfig "quotes.db"
-                ["^unaffiliated/hacker$"]
+
+data Arguments = Args {
+    args_config :: FilePath
+}
+
+args :: Parser Arguments
+args = Args <$> strOption (  long "config"
+                          <> short 'c'
+                          <> metavar "CONFIG"
+                          <> help "Configuration file of the bot, documented in config.yaml.example")
+
+
+prog :: CFG -> IO ()
+prog (CFG irc_config bot_config) =
+    withConfig bot_config $ \bot_config' -> 
+                    IRC.connectToIRC irc_config (quoteBot bot_config')
 
 main :: IO ()
 main = do
-    x <- getArgs
+    let opts = info (helper <*> args)
+                (fullDesc
+                <> header   "netza - quote bot")
+    Args cfg <- execParser opts        
+    x <- try (YAML.decodeFileEither cfg)
     case x of
-         [network  , port  , nick, ch] -> do
-                 let irc_config = cfg network (read port) nick ch
-                 withConfig config $ \config' -> 
-                    IRC.connectToIRC irc_config (quoteBot config' "!")
-         xs -> putStrLn "invalid params"
-         
+            Left (x :: IOError) -> do
+                putStrLn "error reading config file"
+                print x
+            Right (Left x) -> do
+                putStrLn "error parsing config file"
+                print x
+            Right (Right cfg) -> prog cfg
+
     
 
         

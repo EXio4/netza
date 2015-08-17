@@ -1,0 +1,17 @@
+bot:   
+   database: quotes.db
+   prefix: "."
+   admins:   # list of admins, regex on the host)
+        - "^unaffiliated/hacker$"
+
+irc: 
+   network: irc.freenode.net
+   port:    6667           # optional, 6667 is default value
+   nick:    netza
+   sasl:                   # not yet implemented, it's optional
+       username: magic
+       password: hunter2
+   channels:
+       - name:  "##ircah"
+         #password: abc optional
+    

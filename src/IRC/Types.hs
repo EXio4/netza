@@ -12,6 +12,9 @@ import           IRC.Raw.Monad
 import           Data.Monoid
 import           Data.ByteString (ByteString)
 import           Data.Text (Text)
+import           Data.Aeson
+import           Control.Applicative
+import           Control.Monad
 
 data Cmd = N Int
          | S ByteString
@@ -24,9 +27,9 @@ userNick :: User -> Nick
 userNick (User n _ _) = n
         
 newtype Channel = Channel Text
-    deriving (Show,Eq)
+    deriving (Show,Eq,FromJSON)
 newtype Nick    = Nick    Text
-    deriving (Show,Eq,Ord)
+    deriving (Show,Eq,Ord,FromJSON)
 newtype Message = Message Text
     deriving (Show,Eq,Monoid)
 newtype Target  = Target Text
@@ -60,3 +63,24 @@ data IRCConfig = IRCConfig {
     ,config_channels :: [ChannelCfg]
 } deriving (Show,Eq)
 
+
+instance FromJSON SASLCfg where
+    parseJSON (Object v) = SASLCfg <$>
+                            v .: "username" <*>
+                            v .: "password"
+    parseJSON _ = fail "sasl_cfg"
+    
+instance FromJSON ChannelCfg where
+    parseJSON (Object v) = ChannelCfg <$>
+                            v .: "name" <*>
+                            v .:? "password"
+    parseJSON _ = fail "channel_cfg"
+
+instance FromJSON IRCConfig where
+    parseJSON (Object v) = IRCConfig <$>
+                            v .:  "network"           <*>
+                            v .:? "port"    .!= 6667  <*>
+                            v .:  "nick"              <*>
+                            v .:? "sasl"              <*>
+                            v .:  "channels"
+    parseJSON _ = fail "irc_config"

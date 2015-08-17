@@ -19,16 +19,17 @@ import qualified System.Random as Rand
 
 data Config (k :: K_Status) = Config {
      cfg_database    :: !(ConfigI k)
+    ,cfg_prefix      :: !Text
     ,cfg_admins      :: !([Regex.Regex])
 }
 
-makeConfig :: String -> [Text] -> Config NotLoaded
-makeConfig db admins = Config (C_S db) (map (Regex.regex []) admins)
+makeConfig :: String -> Text -> [Text] -> Config NotLoaded
+makeConfig db prefix admins = Config (C_S db) prefix (map (Regex.regex []) admins)
 
 withConfig :: Config NotLoaded -> (Config Loaded -> IO a) -> IO a
-withConfig (Config (C_S cfg) regex) cb = DB.withConnection cfg $ \db -> do
+withConfig (Config (C_S cfg) prefix regex) cb = DB.withConnection cfg $ \db -> do
     DB.execute_ db "CREATE TABLE IF NOT EXISTS quotes ( quote_id INTEGER PRIMARY KEY, added_on INT, added_by TEXT, quote TEXT );"
-    cb (Config (C_D db) regex)
+    cb (Config (C_D db) prefix regex)
 
 data K_Status = Loaded | NotLoaded
 
@@ -42,7 +43,7 @@ til k = fix $ \r -> k >>= \case Loop -> r
                                 Quit -> return ()
 
 database :: Config Loaded -> DB.Connection
-database (Config (C_D x) _) = x
+database (Config (C_D x) _ _) = x
 
 addQuote :: Config Loaded -> Channel -> Nick -> Text -> IRC IO ()
 addQuote (database -> db) ch (Nick nick) quote = do
@@ -72,9 +73,10 @@ randomQuote (database -> db) ch = do
 admin :: Config a -> Text -> Bool
 admin (Config{cfg_admins=regexes}) xs = any (\x -> isJust (Regex.find x xs)) regexes
 
-quoteBot :: Config Loaded -> Text -> IRC IO ()
-quoteBot cfg pref = til loop where
+quoteBot :: Config Loaded -> IRC IO ()
+quoteBot cfg = til loop where
     _cmd c = fmap (T.dropWhile (== ' ')) . T.stripPrefix (pref <> c)
+    pref = cfg_prefix cfg
     loop = irc_read >>= \case
             CHMSG (User nick _ host) channel (Message msg)
                 | Just xs <- _cmd "addquote" msg

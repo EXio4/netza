@@ -86,6 +86,7 @@ executable netza
                       ,random  == 1.1
                       ,text-icu == 0.7.*
                       ,sqlite-simple == 0.4.9.*
+                      ,optparse-applicative == 0.11.*
 
   
   -- Directories containing source files.
