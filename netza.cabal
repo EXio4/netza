@@ -85,6 +85,7 @@ executable netza
                       ,mtl    == 2.2.*
                       ,random  == 1.1
                       ,text-icu == 0.7.*
+                      ,direct-sqlite >= 2.3.13 && < 2.4
                       ,sqlite-simple == 0.4.9.*
                       ,optparse-applicative == 0.11.*
 
